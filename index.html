@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Image animée par le son</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #111;
+      color: white;
+      margin: 0;
+    }
+
+    #image-container {
+      transition: transform 0.3s ease;
+    }
+
+    #image-container.active {
+      transform: scale(1.1);
+    }
+
+    img {
+      max-width: 80vw;
+      max-height: 60vh;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+
+    input, audio {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="image-container">
+    <img id="user-image" src="" alt="Image chargée" />
+  </div>
+
+  <input type="file" id="image-upload" accept="image/*" />
+  <input type="file" id="audio-upload" accept="audio/*" />
+  <audio id="audio" controls></audio>
+
+  <script>
+    const imageInput = document.getElementById('image-upload');
+    const audioInput = document.getElementById('audio-upload');
+    const image = document.getElementById('user-image');
+    const audio = document.getElementById('audio');
+    const imageContainer = document.getElementById('image-container');
+
+    imageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        image.src = URL.createObjectURL(file);
+      }
+    });
+
+    audioInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const audioURL = URL.createObjectURL(file);
+        audio.src = audioURL;
+        setupAudioAnalysis(audio);
+      }
+    });
+
+    function setupAudioAnalysis(audioElement) {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaElementSource(audioElement);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+      analyser.connect(audioContext.destination);
+
+      function animate() {
+        analyser.getByteFrequencyData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+        if (volume > 40) {
+          imageContainer.classList.add('active');
+        } else {
+          imageContainer.classList.remove('active');
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    }
+  </script>
+</body>
+</html>
