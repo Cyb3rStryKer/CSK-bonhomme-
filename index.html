@@ -1,99 +1,173 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Image animée par le son</title>
+  <meta charset="UTF-8">
+  <title>Animation Image + MP3 → Vidéo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
       font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       background: #111;
       color: white;
-      margin: 0;
+      text-align: center;
+      padding: 20px;
     }
 
-    #image-container {
-      transition: transform 0.3s ease;
-    }
-
-    #image-container.active {
-      transform: scale(1.1);
-    }
-
-    img {
-      max-width: 80vw;
-      max-height: 60vh;
-      border-radius: 20px;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
-    }
-
-    input, audio {
+    label {
+      font-weight: bold;
+      display: block;
       margin-top: 20px;
+    }
+
+    input {
+      margin-top: 5px;
+    }
+
+    video, canvas {
+      max-width: 100%;
+      margin-top: 20px;
+      border-radius: 12px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background-color: #666;
+    }
+
+    #download-link {
+      display: block;
+      margin-top: 20px;
+      font-weight: bold;
+      color: #0f0;
     }
   </style>
 </head>
 <body>
-  <div id="image-container">
-    <img id="user-image" src="" alt="Image chargée" />
-  </div>
 
-  <input type="file" id="image-upload" accept="image/*" />
-  <input type="file" id="audio-upload" accept="audio/*" />
-  <audio id="audio" controls></audio>
+<h2>🎥 Générateur vidéo : Image + MP3</h2>
 
-  <script>
-    const imageInput = document.getElementById('image-upload');
-    const audioInput = document.getElementById('audio-upload');
-    const image = document.getElementById('user-image');
-    const audio = document.getElementById('audio');
-    const imageContainer = document.getElementById('image-container');
+<label for="image-upload">📷 Image</label>
+<input type="file" id="image-upload" accept="image/*">
 
-    imageInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        image.src = URL.createObjectURL(file);
+<label for="audio-upload">🎵 Bande-son (MP3)</label>
+<input type="file" id="audio-upload" accept="audio/*">
+
+<button id="generate-btn" disabled>🎬 Générer la vidéo</button>
+<p id="status"></p>
+
+<a id="download-link" href="#" download="video.mp4" style="display:none;">⬇️ Télécharger la vidéo</a>
+
+<canvas id="preview" width="640" height="360" style="display:none;"></canvas>
+
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
+<script>
+  const imageInput = document.getElementById('image-upload');
+  const audioInput = document.getElementById('audio-upload');
+  const generateBtn = document.getElementById('generate-btn');
+  const canvas = document.getElementById('preview');
+  const ctx = canvas.getContext('2d');
+  const statusText = document.getElementById('status');
+  const downloadLink = document.getElementById('download-link');
+
+  let imageFile, audioFile;
+
+  imageInput.addEventListener('change', (e) => {
+    imageFile = e.target.files[0];
+    checkReady();
+  });
+
+  audioInput.addEventListener('change', (e) => {
+    audioFile = e.target.files[0];
+    checkReady();
+  });
+
+  function checkReady() {
+    generateBtn.disabled = !(imageFile && audioFile);
+  }
+
+  generateBtn.addEventListener('click', async () => {
+    generateBtn.disabled = true;
+    statusText.textContent = '⏳ Génération en cours...';
+
+    const duration = await getAudioDuration(audioFile);
+    const fps = 30;
+    const frameCount = Math.floor(duration * fps);
+
+    const img = new Image();
+    img.src = URL.createObjectURL(imageFile);
+    await img.decode();
+
+    const frames = [];
+    for (let i = 0; i < frameCount; i++) {
+      const scale = 1 + 0.05 * Math.sin(i / 5);
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+      const dataURL = canvas.toDataURL('image/jpeg');
+      const binary = atob(dataURL.split(',')[1]);
+      const array = new Uint8Array(binary.length);
+      for (let j = 0; j < binary.length; j++) {
+        array[j] = binary.charCodeAt(j);
       }
-    });
-
-    audioInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const audioURL = URL.createObjectURL(file);
-        audio.src = audioURL;
-        setupAudioAnalysis(audio);
-      }
-    });
-
-    function setupAudioAnalysis(audioElement) {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaElementSource(audioElement);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      source.connect(analyser);
-      analyser.connect(audioContext.destination);
-
-      function animate() {
-        analyser.getByteFrequencyData(dataArray);
-        const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-        if (volume > 40) {
-          imageContainer.classList.add('active');
-        } else {
-          imageContainer.classList.remove('active');
-        }
-
-        requestAnimationFrame(animate);
-      }
-
-      animate();
+      frames.push({ name: `frame${i.toString().padStart(4, '0')}.jpg`, data: array });
     }
-  </script>
+
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+    await ffmpeg.load();
+
+    for (const frame of frames) {
+      ffmpeg.FS('writeFile', frame.name, frame.data);
+    }
+
+    ffmpeg.FS('writeFile', 'audio.mp3', await fetchFile(audioFile));
+
+    await ffmpeg.run(
+      '-framerate', String(fps),
+      '-i', 'frame%04d.jpg',
+      '-i', 'audio.mp3',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-shortest',
+      'output.mp4'
+    );
+
+    const data = ffmpeg.FS('readFile', 'output.mp4');
+    const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
+    const videoURL = URL.createObjectURL(videoBlob);
+
+    downloadLink.href = videoURL;
+    downloadLink.style.display = 'block';
+    statusText.textContent = '✅ Vidéo prête !';
+    generateBtn.disabled = false;
+  });
+
+  async function getAudioDuration(file) {
+    return new Promise((resolve) => {
+      const audio = document.createElement('audio');
+      audio.src = URL.createObjectURL(file);
+      audio.addEventListener('loadedmetadata', () => {
+        resolve(audio.duration);
+      });
+    });
+  }
+</script>
 </body>
 </html>
