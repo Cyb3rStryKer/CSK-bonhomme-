@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Animation Image + MP3 → Vidéo</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <title>Image + MP3 → Vidéo (ffmpeg.wasm)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body {
       font-family: sans-serif;
@@ -12,162 +12,185 @@
       text-align: center;
       padding: 20px;
     }
-
     label {
-      font-weight: bold;
       display: block;
       margin-top: 20px;
+      font-weight: bold;
     }
-
-    input {
+    input[type="file"] {
       margin-top: 5px;
     }
-
-    video, canvas {
+    #preview-image {
       max-width: 100%;
       margin-top: 20px;
       border-radius: 12px;
     }
-
     button {
       margin-top: 20px;
-      padding: 10px 20px;
+      padding: 12px 24px;
       font-size: 1em;
+      background-color: #4caf50;
       border: none;
       border-radius: 8px;
-      background-color: #4caf50;
       color: white;
       cursor: pointer;
     }
-
     button:disabled {
       background-color: #666;
+      cursor: not-allowed;
     }
-
+    #status {
+      margin-top: 20px;
+      min-height: 1.5em;
+    }
     #download-link {
       display: block;
       margin-top: 20px;
       font-weight: bold;
       color: #0f0;
+      text-decoration: none;
     }
   </style>
 </head>
 <body>
 
-<h2>🎥 Générateur vidéo : Image + MP3</h2>
+  <h2>🎥 Générateur vidéo : Image + MP3</h2>
 
-<label for="image-upload">📷 Image</label>
-<input type="file" id="image-upload" accept="image/*">
+  <label for="image-upload">📷 Choisir une image</label>
+  <input type="file" id="image-upload" accept="image/*" />
 
-<label for="audio-upload">🎵 Bande-son (MP3)</label>
-<input type="file" id="audio-upload" accept="audio/*">
+  <img id="preview-image" alt="Prévisualisation de l'image" />
 
-<button id="generate-btn" disabled>🎬 Générer la vidéo</button>
-<p id="status"></p>
+  <label for="audio-upload">🎵 Choisir une bande-son (MP3)</label>
+  <input type="file" id="audio-upload" accept="audio/*" />
 
-<a id="download-link" href="#" download="video.mp4" style="display:none;">⬇️ Télécharger la vidéo</a>
+  <button id="generate-btn" disabled>🎬 Générer la vidéo</button>
 
-<canvas id="preview" width="640" height="360" style="display:none;"></canvas>
+  <p id="status"></p>
+  <a id="download-link" href="#" download="video.mp4" style="display:none;">⬇️ Télécharger la vidéo</a>
 
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
-<script>
-  const imageInput = document.getElementById('image-upload');
-  const audioInput = document.getElementById('audio-upload');
-  const generateBtn = document.getElementById('generate-btn');
-  const canvas = document.getElementById('preview');
-  const ctx = canvas.getContext('2d');
-  const statusText = document.getElementById('status');
-  const downloadLink = document.getElementById('download-link');
+  <canvas id="preview" width="640" height="360" style="display:none;"></canvas>
 
-  let imageFile, audioFile;
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
+  <script>
+    const imageInput = document.getElementById('image-upload');
+    const audioInput = document.getElementById('audio-upload');
+    const generateBtn = document.getElementById('generate-btn');
+    const statusText = document.getElementById('status');
+    const downloadLink = document.getElementById('download-link');
+    const previewImage = document.getElementById('preview-image');
+    const canvas = document.getElementById('preview');
+    const ctx = canvas.getContext('2d');
 
-  imageInput.addEventListener('change', (e) => {
-    imageFile = e.target.files[0];
-    checkReady();
-  });
+    let imageFile = null;
+    let audioFile = null;
 
-  audioInput.addEventListener('change', (e) => {
-    audioFile = e.target.files[0];
-    checkReady();
-  });
-
-  function checkReady() {
-    generateBtn.disabled = !(imageFile && audioFile);
-  }
-
-  generateBtn.addEventListener('click', async () => {
-    generateBtn.disabled = true;
-    statusText.textContent = '⏳ Génération en cours...';
-
-    const duration = await getAudioDuration(audioFile);
-    const fps = 30;
-    const frameCount = Math.floor(duration * fps);
-
-    const img = new Image();
-    img.src = URL.createObjectURL(imageFile);
-    await img.decode();
-
-    const frames = [];
-    for (let i = 0; i < frameCount; i++) {
-      const scale = 1 + 0.05 * Math.sin(i / 5);
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-      ctx.save();
-      ctx.translate(w / 2, h / 2);
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
-      ctx.restore();
-      const dataURL = canvas.toDataURL('image/jpeg');
-      const binary = atob(dataURL.split(',')[1]);
-      const array = new Uint8Array(binary.length);
-      for (let j = 0; j < binary.length; j++) {
-        array[j] = binary.charCodeAt(j);
+    imageInput.addEventListener('change', (e) => {
+      imageFile = e.target.files[0];
+      if (imageFile) {
+        previewImage.src = URL.createObjectURL(imageFile);
+      } else {
+        previewImage.src = '';
       }
-      frames.push({ name: `frame${i.toString().padStart(4, '0')}.jpg`, data: array });
-    }
-
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: true });
-    await ffmpeg.load();
-
-    for (const frame of frames) {
-      ffmpeg.FS('writeFile', frame.name, frame.data);
-    }
-
-    ffmpeg.FS('writeFile', 'audio.mp3', await fetchFile(audioFile));
-
-    await ffmpeg.run(
-      '-framerate', String(fps),
-      '-i', 'frame%04d.jpg',
-      '-i', 'audio.mp3',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-shortest',
-      'output.mp4'
-    );
-
-    const data = ffmpeg.FS('readFile', 'output.mp4');
-    const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
-    const videoURL = URL.createObjectURL(videoBlob);
-
-    downloadLink.href = videoURL;
-    downloadLink.style.display = 'block';
-    statusText.textContent = '✅ Vidéo prête !';
-    generateBtn.disabled = false;
-  });
-
-  async function getAudioDuration(file) {
-    return new Promise((resolve) => {
-      const audio = document.createElement('audio');
-      audio.src = URL.createObjectURL(file);
-      audio.addEventListener('loadedmetadata', () => {
-        resolve(audio.duration);
-      });
+      checkReady();
     });
-  }
-</script>
+
+    audioInput.addEventListener('change', (e) => {
+      audioFile = e.target.files[0];
+      checkReady();
+    });
+
+    function checkReady() {
+      generateBtn.disabled = !(imageFile && audioFile);
+      downloadLink.style.display = 'none';
+      statusText.textContent = '';
+    }
+
+    generateBtn.addEventListener('click', async () => {
+      generateBtn.disabled = true;
+      statusText.textContent = '⏳ Génération en cours... Ceci peut prendre du temps.';
+
+      try {
+        const duration = await getAudioDuration(audioFile);
+        const fps = 30;
+        const frameCount = Math.floor(duration * fps);
+
+        const img = new Image();
+        img.src = URL.createObjectURL(imageFile);
+        await img.decode();
+
+        canvas.width = 640;
+        canvas.height = 360;
+
+        // Générer les frames avec zoom simple (animation sinus)
+        const frames = [];
+        for (let i = 0; i < frameCount; i++) {
+          const scale = 1 + 0.05 * Math.sin(i / 5);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+          ctx.restore();
+
+          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+          const binary = atob(dataURL.split(',')[1]);
+          const array = new Uint8Array(binary.length);
+          for (let j = 0; j < binary.length; j++) {
+            array[j] = binary.charCodeAt(j);
+          }
+          frames.push({ name: `frame${i.toString().padStart(4, '0')}.jpg`, data: array });
+        }
+
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        const ffmpeg = createFFmpeg({ log: false });
+        await ffmpeg.load();
+
+        // Écrire les images dans le FS de ffmpeg
+        for (const frame of frames) {
+          ffmpeg.FS('writeFile', frame.name, frame.data);
+        }
+
+        // Écrire le fichier audio
+        ffmpeg.FS('writeFile', 'audio.mp3', await fetchFile(audioFile));
+
+        // Construire la vidéo
+        await ffmpeg.run(
+          '-framerate', String(fps),
+          '-i', 'frame%04d.jpg',
+          '-i', 'audio.mp3',
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-shortest',
+          'output.mp4'
+        );
+
+        // Lire le fichier vidéo
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        const videoURL = URL.createObjectURL(videoBlob);
+
+        downloadLink.href = videoURL;
+        downloadLink.style.display = 'inline-block';
+        statusText.textContent = '✅ Vidéo prête ! Clique pour télécharger.';
+      } catch (err) {
+        statusText.textContent = '❌ Erreur : ' + err.message;
+      }
+      generateBtn.disabled = false;
+    });
+
+    async function getAudioDuration(file) {
+      return new Promise((resolve, reject) => {
+        const audio = document.createElement('audio');
+        audio.src = URL.createObjectURL(file);
+        audio.addEventListener('loadedmetadata', () => {
+          resolve(audio.duration);
+        });
+        audio.addEventListener('error', () => reject(new Error('Impossible de charger l’audio')));
+      });
+    }
+  </script>
 </body>
 </html>
