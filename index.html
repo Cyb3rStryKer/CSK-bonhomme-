@@ -12,13 +12,18 @@
       text-align: center;
       padding: 20px;
     }
-    label {
-      display: block;
+    label.file-label {
+      cursor: pointer;
+      padding: 12px 24px;
+      background: #4caf50;
+      border-radius: 8px;
+      display: inline-block;
       margin-top: 20px;
-      font-weight: bold;
+      color: white;
+      user-select: none;
     }
     input[type="file"] {
-      margin-top: 5px;
+      display: none;
     }
     #preview-image {
       max-width: 100%;
@@ -50,19 +55,23 @@
       color: #0f0;
       text-decoration: none;
     }
+    #audio-upload-label {
+      margin-top: 30px;
+      display: block;
+    }
   </style>
 </head>
 <body>
 
   <h2>🎥 Générateur vidéo : Image + MP3</h2>
 
-  <label for="image-upload">📷 Choisir une image</label>
-  <input type="file" id="image-upload" accept="image/*" />
+  <label for="image-upload" class="file-label">📷 Choisir une image</label>
+  <input type="file" id="image-upload" accept="image/jpeg,image/png,image/jpg" />
 
   <img id="preview-image" alt="Prévisualisation de l'image" />
 
-  <label for="audio-upload">🎵 Choisir une bande-son (MP3)</label>
-  <input type="file" id="audio-upload" accept="audio/*" />
+  <label for="audio-upload" id="audio-upload-label" class="file-label">🎵 Choisir une bande-son (MP3)</label>
+  <input type="file" id="audio-upload" accept="audio/mp3,audio/*" />
 
   <button id="generate-btn" disabled>🎬 Générer la vidéo</button>
 
@@ -146,15 +155,12 @@
         const ffmpeg = createFFmpeg({ log: false });
         await ffmpeg.load();
 
-        // Écrire les images dans le FS de ffmpeg
         for (const frame of frames) {
           ffmpeg.FS('writeFile', frame.name, frame.data);
         }
 
-        // Écrire le fichier audio
         ffmpeg.FS('writeFile', 'audio.mp3', await fetchFile(audioFile));
 
-        // Construire la vidéo
         await ffmpeg.run(
           '-framerate', String(fps),
           '-i', 'frame%04d.jpg',
@@ -167,7 +173,6 @@
           'output.mp4'
         );
 
-        // Lire le fichier vidéo
         const data = ffmpeg.FS('readFile', 'output.mp4');
         const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
         const videoURL = URL.createObjectURL(videoBlob);
